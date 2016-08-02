@@ -1,0 +1,42 @@
+#---------------------------------------------------------[Initialisations]--------------------------------------------------------
+[string]$DateStr = (Get-Date).ToString("s").Replace(":","-") # +"_" # Easy sortable date string    
+Import-Module ActiveDirectory
+#----------------------------------------------------------[Functions]----------------------------------------------------------
+Function Connect-EXOnline {
+    param($Credentials)
+    $URL = "https://ps.outlook.com/powershell"     
+    $EXOSession = New-PSSession -ConfigurationName Microsoft.Exchange -ConnectionUri $URL -Credential $Credentials -Authentication Basic -AllowRedirection -Name "Exchange Online"
+        Import-PSSession $EXOSession
+}
+###################################################################################################################################
+#Variables
+[string]$KeyFilePath = ""
+[string]$CredPath = ""
+
+$Key = Get-Content $KeyFilePath
+$credXML = Import-Clixml $CredPath #Import encrypted credential file into XML format
+$secureStringPWD = ConvertTo-SecureString -String $credXML.Password -Key $key
+$Credentials = New-Object System.Management.Automation.PsCredential($credXML.UserName, $secureStringPWD) # Create PScredential Object
+
+$TargetSG = "<Security Group>"
+$TargetSGusers = Get-ADGroupMember $TargetSG | select -ExpandProperty name
+
+get-pssession | remove-pssession
+Connect-EXOnline -Credentials $Credentials
+Start-Transcript ('c:\windows\temp\' + "$Datestr" + '_Set_Agenda_Rights.log') # Start logging
+
+ForEach ($MB in $TargetSGusers) {
+    $users = get-MailboxFolderPermission -Identity ("$MB" + ":\Agenda") | select -ExpandProperty user
+   
+    ForEach ($user in $users) { 
+        [string]$DisplayName = $user.displayname
+        If ($DisplayName -notlike "Default") {
+                If ($DisplayName -notlike "Anonymous") {
+                    Remove-MailboxFolderPermission -Identity $MB -user $User.displayname -Confirm:$False }
+                }
+        } # End If
+        set-MailboxFolderPermission -Identity ("$MB" + ":\Agenda") -User 'Default' -AccessRights Reviewer -Confirm:$False #-whatif
+        set-MailboxFolderPermission -Identity ("$MB" + ":\Agenda") -User 'Anonymous' -AccessRights Reviewer -Confirm:$False #-whatif
+        add-MailboxFolderPermission -Identity ("$MB" + ":\Agenda") -User '<email address>' -AccessRights Reviewer -Confirm:$False #-whatif # werkt
+        add-MailboxFolderPermission -Identity ("$MB" + ":\Agenda") -User '<email address>' -AccessRights Editor -Confirm:$False #-whatif # werkt
+    } # End ForEach
